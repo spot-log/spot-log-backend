@@ -1,4 +1,4 @@
-﻿import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+﻿import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 
@@ -16,10 +16,5 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: any) {
     return this.authService.loginOAuth(req.user);
-  }
-
-  @Post('refresh')
-  refresh(@Body('refreshToken') refreshToken: string) {
-    return this.authService.refresh(refreshToken);
   }
 }

@@ -25,9 +25,6 @@ export class User {
   @Column({ type: 'varchar', length: 40 })
   nickname!: string;
 
-  @Column({ name: 'refresh_token_hash', type: 'varchar', length: 64, nullable: true })
-  refreshTokenHash!: string | null;
-
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;
 
