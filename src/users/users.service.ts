@@ -14,6 +14,10 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { provider, providerUserId } });
   }
 
+  findById(id: string) {
+    return this.usersRepository.findOne({ where: { id } });
+  }
+
   async createFromOAuth(params: {
     email: string;
     provider: AuthProvider;
