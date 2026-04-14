@@ -9,16 +9,6 @@ pipeline {
             }
         }
 
-        stage('Copy .env to Server') {
-            steps {
-                withCredentials([file(credentialsId: 'env_secretfile', variable: 'ENV_FILE')]) {
-                    sh '''
-                        scp -o StrictHostKeyChecking=no $ENV_FILE ubuntu@${SERVER_IP}:/home/ubuntu/deploy/.env
-                    '''
-                }
-            }
-        }
-
         stage('Docker Build') {
             steps {
                 sh 'docker build -t spot-log-backend:latest .'
