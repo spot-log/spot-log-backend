@@ -18,8 +18,8 @@ pipeline {
 
         stage('Docker Compose Up') {
             steps {
-                sh 'docker compose down || true'
-                sh 'docker compose up -d'
+                sh 'docker compose --env-file /var/lib/jenkins/deploy/.env down || true'
+                sh 'docker compose --env-file /var/lib/jenkins/deploy/.env up -d'
                 echo 'Docker Compose Up Success!'
             }
         }
