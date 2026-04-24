@@ -154,6 +154,59 @@
           "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
           "deleted": true
         }
+      },
+      "GoogleCodeLoginBody": {
+        "type": "object",
+        "required": ["code", "redirectUri"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Google authorization code received by the client"
+          },
+          "redirectUri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Redirect URI used when requesting the authorization code"
+          },
+          "codeVerifier": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 128,
+            "description": "PKCE code verifier when the client uses PKCE"
+          }
+        },
+        "example": {
+          "code": "4/0AQSTgQExampleAuthCode",
+          "redirectUri": "http://localhost:5173/auth/google/callback",
+          "codeVerifier": "0123456789012345678901234567890123456789012"
+        }
+      },
+      "AuthUserResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "provider": { "type": "string", "enum": ["GOOGLE", "APPLE", "KAKAO"] },
+          "nickname": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "OAuthLoginResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": { "type": "string" },
+          "user": { "$ref": "#/components/schemas/AuthUserResponse" }
+        },
+        "example": {
+          "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "user": {
+            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "email": "spotlog@example.com",
+            "provider": "GOOGLE",
+            "nickname": "SpotLog",
+            "createdAt": "2026-04-24T00:00:00.000Z"
+          }
+        }
       }
     }
   },
@@ -188,6 +241,34 @@
               }
             }
           }
+        }
+      }
+    },
+    "/auth/google/code": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Google authorization code login",
+        "description": "Exchanges the client-provided Google authorization code on the server, loads the Google profile, creates or finds the user, and returns the service JWT.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GoogleCodeLoginBody" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JWT access token and authenticated user",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OAuthLoginResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid request body" },
+          "401": { "description": "Invalid Google authorization code or Google account information" },
+          "502": { "description": "Failed to exchange the code or load the Google profile from Google APIs" }
         }
       }
     },
