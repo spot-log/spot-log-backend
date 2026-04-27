@@ -197,7 +197,7 @@ export class MemosService {
       );
   }
 
-  async republish(userId: string, memoId: string, expiresAt?: string) {
+  async republish(userId: string, memoId: string, durationDays: number) {
     const memo = await this.findOwnedMemoEntity(userId, memoId);
 
     if (!this.isExpired(memo)) {
@@ -208,7 +208,9 @@ export class MemosService {
       throw new BadRequestException('공개 메모만 재공개할 수 있습니다.');
     }
 
-    memo.expiresAt = this.parseExpiration(expiresAt) ?? this.createDefaultPublicExpiration();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+    memo.expiresAt = expiresAt;
 
     const saved = await this.memosRepository.save(memo);
     return this.toMemoResponse(saved);
