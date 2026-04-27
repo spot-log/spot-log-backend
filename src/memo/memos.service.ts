@@ -149,6 +149,28 @@ export class MemosService {
     return { id: memoId, deleted: true };
   }
 
+  async findByLocation(latitude: number, longitude: number) {
+    const lat = this.validateLatitude(latitude);
+    const lng = this.validateLongitude(longitude);
+
+    const memos = await this.memosRepository.find({
+      where: {
+        latitude: lat,
+        longitude: lng,
+        visibility: Visibility.PUBLIC,
+        status: MemoStatus.ACTIVE
+      },
+      relations: { user: true },
+      order: { createdAt: 'DESC' }
+    });
+
+    const syncedMemos = await this.syncExpiredStatuses(memos);
+
+    return syncedMemos
+      .filter((memo) => memo.visibility === Visibility.PUBLIC && memo.status === MemoStatus.ACTIVE)
+      .map((memo) => this.toMemoResponse(memo));
+  }
+
   async findNearbyPublicMemos(params: FindNearbyPublicMemosParams) {
     const latitude = this.validateLatitude(params.latitude);
     const longitude = this.validateLongitude(params.longitude);
