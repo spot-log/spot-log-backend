@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -24,6 +26,7 @@ import { ListMemosQueryDto } from './dto/list-memos-query.dto';
 import { LocationMemosQueryDto } from './dto/location-memos-query.dto';
 import { MemoResponseDto } from './dto/memo-response.dto';
 import { NearbyPublicMemosQueryDto } from './dto/nearby-public-memos-query.dto';
+import { RepublishMemoDto } from './dto/republish-memo.dto';
 import { UpdateMemoDto } from './dto/update-memo.dto';
 import { MemosService } from './memos.service';
 
@@ -37,6 +40,15 @@ type AuthenticatedRequest = {
 @Controller('memos')
 export class MemoController {
   constructor(private readonly memosService: MemosService) {}
+
+  @Get('me/bookmarks')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '북마크한 메모 목록 조회' })
+  @ApiOkResponse({ type: [MemoResponseDto] })
+  getBookmarkedMemos(@Req() req: AuthenticatedRequest) {
+    return this.memosService.findBookmarkedMemos(req.user.userId);
+  }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
@@ -120,12 +132,37 @@ export class MemoController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '만료 메모 재공개' })
-  @ApiCreatedResponse({ type: MemoResponseDto })
+  @ApiOkResponse({ type: MemoResponseDto })
   republishMemo(
     @Req() req: AuthenticatedRequest,
     @Param('memoId', new ParseUUIDPipe()) memoId: string,
-    @Body('expiresAt') expiresAt?: string,
+    @Body() body: RepublishMemoDto,
   ) {
-    return this.memosService.republish(req.user.userId, memoId, expiresAt);
+    return this.memosService.republish(req.user.userId, memoId, body.durationDays);
+  }
+
+  @Post(':memoId/bookmark')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '북마크 추가' })
+  @ApiOkResponse({ schema: { properties: { memoId: { type: 'string' }, bookmarked: { type: 'boolean' } } } })
+  addBookmark(
+    @Req() req: AuthenticatedRequest,
+    @Param('memoId', new ParseUUIDPipe()) memoId: string,
+  ) {
+    return this.memosService.addBookmark(req.user.userId, memoId);
+  }
+
+  @Delete(':memoId/bookmark')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '북마크 제거' })
+  @ApiOkResponse({ schema: { properties: { memoId: { type: 'string' }, removed: { type: 'boolean' } } } })
+  removeBookmark(
+    @Req() req: AuthenticatedRequest,
+    @Param('memoId', new ParseUUIDPipe()) memoId: string,
+  ) {
+    return this.memosService.removeBookmark(req.user.userId, memoId);
   }
 }

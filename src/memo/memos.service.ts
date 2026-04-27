@@ -4,9 +4,10 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
-import { Memo, MemoStatus, Visibility } from './entity/memo.entity';
+import { MemoBookmark } from './entity/memo-bookmark.entity';
+import { Memo, Visibility } from './entity/memo.entity';
 
 type CreateMemoParams = {
   title?: string;
@@ -44,6 +45,8 @@ export class MemosService {
   constructor(
     @InjectRepository(Memo)
     private readonly memosRepository: Repository<Memo>,
+    @InjectRepository(MemoBookmark)
+    private readonly bookmarksRepository: Repository<MemoBookmark>,
     private readonly usersService: UsersService
   ) {}
 
@@ -56,8 +59,7 @@ export class MemosService {
       order: { createdAt: 'DESC' }
     });
 
-    const syncedMemos = await this.syncExpiredStatuses(memos);
-    const filteredMemos = this.filterMyMemosByTab(syncedMemos, params.tab);
+    const filteredMemos = this.filterMyMemosByTab(memos, params.tab);
     const sortedMemos = this.sortMemos(filteredMemos, params);
 
     return sortedMemos.map((memo) => this.toMemoResponse(memo, params));
@@ -65,19 +67,14 @@ export class MemosService {
 
   async findOneByUser(userId: string, memoId: string) {
     const memo = await this.findOwnedMemoEntity(userId, memoId);
-    const [syncedMemo] = await this.syncExpiredStatuses([memo]);
-    return this.toMemoResponse(syncedMemo);
+    return this.toMemoResponse(memo);
   }
 
   async create(userId: string, params: CreateMemoParams) {
     const user = await this.validateUserOrThrow(userId);
     const normalized = this.normalizeCreateParams(params);
 
-    const memo = this.memosRepository.create({
-      user,
-      ...normalized
-    });
-
+    const memo = this.memosRepository.create({ user, ...normalized });
     const savedMemo = await this.memosRepository.save(memo);
     return this.toMemoResponse(savedMemo);
   }
@@ -85,7 +82,7 @@ export class MemosService {
   async update(userId: string, memoId: string, params: UpdateMemoParams) {
     const memo = await this.findOwnedMemoEntity(userId, memoId);
 
-    if (memo.status === MemoStatus.EXPIRED) {
+    if (this.isExpired(memo)) {
       throw new BadRequestException('만료된 메모는 수정할 수 없습니다.');
     }
 
@@ -133,10 +130,7 @@ export class MemosService {
       }
     } else {
       memo.expiresAt = null;
-      memo.status = MemoStatus.ACTIVE;
     }
-
-    memo.status = this.computeStatus(memo);
 
     const savedMemo = await this.memosRepository.save(memo);
     return this.toMemoResponse(savedMemo);
@@ -145,30 +139,26 @@ export class MemosService {
   async remove(userId: string, memoId: string) {
     const memo = await this.findOwnedMemoEntity(userId, memoId);
     await this.memosRepository.remove(memo);
-
     return { id: memoId, deleted: true };
   }
 
   async findByLocation(latitude: number, longitude: number) {
     const lat = this.validateLatitude(latitude);
     const lng = this.validateLongitude(longitude);
+    const now = new Date();
 
     const memos = await this.memosRepository.find({
       where: {
         latitude: lat,
         longitude: lng,
         visibility: Visibility.PUBLIC,
-        status: MemoStatus.ACTIVE
+        expiresAt: MoreThan(now)
       },
       relations: { user: true },
       order: { createdAt: 'DESC' }
     });
 
-    const syncedMemos = await this.syncExpiredStatuses(memos);
-
-    return syncedMemos
-      .filter((memo) => memo.visibility === Visibility.PUBLIC && memo.status === MemoStatus.ACTIVE)
-      .map((memo) => this.toMemoResponse(memo));
+    return memos.map((memo) => this.toMemoResponse(memo));
   }
 
   async findNearbyPublicMemos(params: FindNearbyPublicMemosParams) {
@@ -180,18 +170,17 @@ export class MemosService {
       throw new BadRequestException('Radius must be greater than 0.');
     }
 
+    const now = new Date();
+
     const memos = await this.memosRepository.find({
       where: {
         visibility: Visibility.PUBLIC,
-        status: MemoStatus.ACTIVE
+        expiresAt: MoreThan(now)
       },
       relations: { user: true }
     });
 
-    const syncedMemos = await this.syncExpiredStatuses(memos);
-
-    return syncedMemos
-      .filter((memo) => memo.visibility === Visibility.PUBLIC)
+    return memos
       .map((memo) => ({
         memo,
         distanceMeters: this.calculateDistanceMeters(
@@ -201,14 +190,101 @@ export class MemosService {
           Number(memo.longitude)
         )
       }))
-      .filter(({ memo, distanceMeters }) => {
-        const isActive = memo.status === MemoStatus.ACTIVE;
-        return isActive && distanceMeters <= radius;
-      })
+      .filter(({ distanceMeters }) => distanceMeters <= radius)
       .sort((a, b) => a.distanceMeters - b.distanceMeters)
       .map(({ memo, distanceMeters }) =>
         this.toMemoResponse(memo, { latitude, longitude, radius }, distanceMeters)
       );
+  }
+
+  async republish(userId: string, memoId: string, durationDays: number) {
+    const memo = await this.findOwnedMemoEntity(userId, memoId);
+
+    if (!this.isExpired(memo)) {
+      throw new BadRequestException('만료된 메모만 재공개할 수 있습니다.');
+    }
+
+    if (memo.visibility !== Visibility.PUBLIC) {
+      throw new BadRequestException('공개 메모만 재공개할 수 있습니다.');
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + durationDays);
+    memo.expiresAt = expiresAt;
+
+    const saved = await this.memosRepository.save(memo);
+    return this.toMemoResponse(saved);
+  }
+
+  async addBookmark(userId: string, memoId: string) {
+    const user = await this.validateUserOrThrow(userId);
+
+    const memo = await this.memosRepository.findOne({
+      where: { id: memoId },
+      relations: { user: true }
+    });
+
+    if (!memo) {
+      throw new NotFoundException('Memo not found.');
+    }
+
+    if (memo.visibility !== Visibility.PUBLIC) {
+      throw new BadRequestException('공개 메모만 북마크할 수 있습니다.');
+    }
+
+    if (this.isExpired(memo)) {
+      throw new BadRequestException('만료된 메모는 북마크할 수 없습니다.');
+    }
+
+    const existing = await this.bookmarksRepository.findOne({
+      where: { user: { id: userId }, memo: { id: memoId } }
+    });
+
+    if (existing) {
+      throw new BadRequestException('이미 북마크한 메모입니다.');
+    }
+
+    const bookmark = this.bookmarksRepository.create({ user, memo });
+    await this.bookmarksRepository.save(bookmark);
+
+    return { memoId, bookmarked: true };
+  }
+
+  async removeBookmark(userId: string, memoId: string) {
+    await this.validateUserOrThrow(userId);
+
+    const bookmark = await this.bookmarksRepository.findOne({
+      where: { user: { id: userId }, memo: { id: memoId } }
+    });
+
+    if (!bookmark) {
+      throw new NotFoundException('북마크를 찾을 수 없습니다.');
+    }
+
+    await this.bookmarksRepository.remove(bookmark);
+    return { memoId, removed: true };
+  }
+
+  async findBookmarkedMemos(userId: string) {
+    await this.validateUserOrThrow(userId);
+
+    const now = new Date();
+
+    const bookmarks = await this.bookmarksRepository
+      .createQueryBuilder('bookmark')
+      .innerJoinAndSelect('bookmark.memo', 'memo')
+      .innerJoinAndSelect('memo.user', 'user')
+      .where('bookmark.user_id = :userId', { userId })
+      .andWhere('memo.expires_at > :now', { now })
+      .getMany();
+
+    return bookmarks.map((b) => this.toMemoResponse(b.memo));
+  }
+
+  private isExpired(memo: Memo): boolean {
+    return memo.visibility === Visibility.PUBLIC
+      && memo.expiresAt !== null
+      && memo.expiresAt <= new Date();
   }
 
   private async validateUserOrThrow(userId: string) {
@@ -256,17 +332,7 @@ export class MemosService {
         ? this.parseExpiration(params.expiresAt) ?? this.createDefaultPublicExpiration()
         : null;
 
-    return {
-      title,
-      body,
-      visibility: params.visibility,
-      latitude,
-      longitude,
-      placeName,
-      triggerRadius,
-      expiresAt,
-      status: MemoStatus.ACTIVE as MemoStatus
-    };
+    return { title, body, visibility: params.visibility, latitude, longitude, placeName, triggerRadius, expiresAt };
   }
 
   private validateBody(body: string) {
@@ -344,35 +410,9 @@ export class MemosService {
     return expiresAt;
   }
 
-  private computeStatus(memo: Memo) {
-    if (memo.visibility === Visibility.PUBLIC && memo.expiresAt) {
-      return memo.expiresAt.getTime() <= Date.now()
-        ? MemoStatus.EXPIRED
-        : MemoStatus.ACTIVE;
-    }
-
-    return MemoStatus.ACTIVE;
-  }
-
-  private async syncExpiredStatuses(memos: Memo[]) {
-    const changedMemos: Memo[] = [];
-
-    for (const memo of memos) {
-      const nextStatus = this.computeStatus(memo);
-      if (memo.status !== nextStatus) {
-        memo.status = nextStatus;
-        changedMemos.push(memo);
-      }
-    }
-
-    if (changedMemos.length > 0) {
-      await this.memosRepository.save(changedMemos);
-    }
-
-    return memos;
-  }
-
   private filterMyMemosByTab(memos: Memo[], tab?: string) {
+    const now = new Date();
+
     switch (tab) {
       case 'private':
         return memos.filter((memo) => memo.visibility === Visibility.PRIVATE);
@@ -380,10 +420,16 @@ export class MemosService {
         return memos.filter(
           (memo) =>
             memo.visibility === Visibility.PUBLIC &&
-            memo.status !== MemoStatus.EXPIRED
+            memo.expiresAt !== null &&
+            memo.expiresAt > now
         );
       case 'expired':
-        return memos.filter((memo) => memo.status === MemoStatus.EXPIRED);
+        return memos.filter(
+          (memo) =>
+            memo.visibility === Visibility.PUBLIC &&
+            memo.expiresAt !== null &&
+            memo.expiresAt <= now
+        );
       default:
         return memos;
     }
@@ -450,38 +496,6 @@ export class MemosService {
     return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // 기능명세서 6-3: 만료된 공개 메모 재공개 (내부적으로 새 메모 생성)
-  async republish(userId: string, memoId: string, expiresAt?: string) {
-    const memo = await this.findOwnedMemoEntity(userId, memoId);
-    await this.syncExpiredStatuses([memo]);
-
-    if (memo.status !== MemoStatus.EXPIRED) {
-      throw new BadRequestException('만료된 메모만 재공개할 수 있습니다.');
-    }
-
-    if (memo.visibility !== Visibility.PUBLIC) {
-      throw new BadRequestException('공개 메모만 재공개할 수 있습니다.');
-    }
-
-    const newExpiresAt = this.parseExpiration(expiresAt) ?? this.createDefaultPublicExpiration();
-
-    const newMemo = this.memosRepository.create({
-      user: memo.user,
-      visibility: Visibility.PUBLIC,
-      title: memo.title,
-      body: memo.body,
-      placeName: memo.placeName,
-      latitude: memo.latitude,
-      longitude: memo.longitude,
-      triggerRadius: memo.triggerRadius,
-      status: MemoStatus.ACTIVE,
-      expiresAt: newExpiresAt
-    });
-
-    const saved = await this.memosRepository.save(newMemo);
-    return this.toMemoResponse(saved);
-  }
-
   private toMemoResponse(
     memo: Memo,
     context?: { latitude?: number; longitude?: number; radius?: number },
@@ -504,7 +518,6 @@ export class MemosService {
       title: memo.title,
       body: memo.body,
       visibility: memo.visibility,
-      status: memo.status,
       placeName: memo.placeName,
       latitude: Number(memo.latitude),
       longitude: Number(memo.longitude),

@@ -14,11 +14,6 @@ export enum Visibility {
   PRIVATE = 'PRIVATE'
 }
 
-export enum MemoStatus {
-  ACTIVE = 'ACTIVE',
-  EXPIRED = 'EXPIRED'
-}
-
 @Entity('memos')
 export class Memo {
   @PrimaryGeneratedColumn('uuid')
@@ -48,14 +43,6 @@ export class Memo {
 
   @Column({ name: 'trigger_radius', type: 'int', default: 100 })
   triggerRadius!: number;
-
-  @Column({
-    name: 'status',
-    type: 'enum',
-    enum: MemoStatus,
-    default: MemoStatus.ACTIVE
-  })
-  status!: MemoStatus;
 
   @Column({ name: 'expires_at', type: 'datetime', nullable: true })
   expiresAt!: Date | null;
