@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MemoStatus, Visibility } from '../entity/memo.entity';
+import { Visibility } from '../entity/memo.entity';
 
 export class MemoResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -13,9 +13,6 @@ export class MemoResponseDto {
 
   @ApiProperty({ enum: Visibility })
   visibility!: Visibility;
-
-  @ApiProperty({ enum: MemoStatus })
-  status!: MemoStatus;
 
   @ApiPropertyOptional({ nullable: true })
   placeName!: string | null;
