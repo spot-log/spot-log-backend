@@ -10,7 +10,7 @@ import { UsersService } from '../users/users.service';
 import { AuthProvider } from '../users/user.entity';
 import { GoogleCodeLoginDto } from './dto/google-code-login.dto';
 
-export type OAuthProfile = {
+type OAuthProfile = {
   provider: AuthProvider;
   providerUserId: string;
   email: string;
@@ -50,7 +50,7 @@ export class AuthService {
     return this.loginOAuth(profile);
   }
 
-  async loginOAuth(profile: OAuthProfile) {
+  private async loginOAuth(profile: OAuthProfile) {
     let user = await this.usersService.findByProvider(
       profile.provider,
       profile.providerUserId
