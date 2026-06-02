@@ -78,9 +78,9 @@ export class MemoController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Memo detail lookup',
+    summary: '메모 상세 조회',
     description:
-      'Returns an owned memo or an active public memo by id. Private memos owned by other users and expired public memos are hidden.',
+      '메모 ID 기준으로 본인 메모 또는 활성 공개 메모를 조회합니다. 다른 사용자의 개인 메모와 만료된 공개 메모는 조회되지 않습니다.',
   })
   @ApiOkResponse({ type: MemoResponseDto })
   getMemo(

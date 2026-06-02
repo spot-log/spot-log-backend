@@ -10,7 +10,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('google/code')
-  @ApiOperation({ summary: 'Google 인가 코드로 로그인' })
+  @ApiOperation({ summary: '구글 인가 코드로 로그인' })
   @ApiOkResponse({ type: AuthResponseDto })
   loginWithGoogleCode(@Body() body: GoogleCodeLoginDto) {
     return this.authService.loginWithGoogleCode(body);

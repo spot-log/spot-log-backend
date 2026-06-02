@@ -19,7 +19,7 @@ class AuthUserDto {
 }
 
 export class AuthResponseDto {
-  @ApiProperty({ description: 'JWT access token' })
+  @ApiProperty({ description: 'JWT 액세스 토큰' })
   accessToken!: string;
 
   @ApiProperty({ type: AuthUserDto })
