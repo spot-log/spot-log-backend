@@ -3,8 +3,9 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
-  ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -15,11 +16,12 @@ export enum NotificationType {
 }
 
 @Entity('notification_settings')
+@Unique('uniq_notification_settings_user_id', ['user'])
 export class NotificationSetting {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @ManyToOne(() => User, { nullable: false })
+  @OneToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
@@ -27,17 +29,9 @@ export class NotificationSetting {
     name: 'public_memo',
     type: 'enum',
     enum: NotificationType,
-    default: NotificationType.ON,
+    default: NotificationType.OFF,
   })
   publicMemo!: NotificationType;
-
-  @Column({
-    name: 'private_memo',
-    type: 'enum',
-    enum: NotificationType,
-    default: NotificationType.ON,
-  })
-  privateMemo!: NotificationType;
 
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;

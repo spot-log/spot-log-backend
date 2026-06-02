@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { MemosModule } from './memo/memos.module';
+import { NotificationsModule } from './notification/notifications.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -26,7 +27,8 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
-    MemosModule
+    MemosModule,
+    NotificationsModule
   ],
   controllers: [AppController],
   providers: [AppService]
