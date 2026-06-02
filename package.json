@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "nest start",
+    "start:local": "powershell -Command \"$env:ENV_FILE='.env.local'; nest start --watch\"",
     "start:dev": "nest start --watch",
     "start:dev:restart": "powershell -Command \"`$p=(Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty OwningProcess); if(`$p){Stop-Process -Id `$p -Force}; npm run start:dev\"",
     "start:prod": "node dist/main.js",
