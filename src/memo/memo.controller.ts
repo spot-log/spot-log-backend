@@ -23,7 +23,6 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreateMemoDto } from './dto/create-memo.dto';
 import { ListMemosQueryDto } from './dto/list-memos-query.dto';
-import { LocationMemosQueryDto } from './dto/location-memos-query.dto';
 import { MemoResponseDto } from './dto/memo-response.dto';
 import { NearbyPublicMemosQueryDto } from './dto/nearby-public-memos-query.dto';
 import { RepublishMemoDto } from './dto/republish-memo.dto';
@@ -64,13 +63,6 @@ export class MemoController {
     });
   }
 
-  @Get('at')
-  @ApiOperation({ summary: '특정 좌표의 공개 메모 조회' })
-  @ApiOkResponse({ type: [MemoResponseDto] })
-  getMemosAtLocation(@Query() query: LocationMemosQueryDto) {
-    return this.memosService.findByLocation(query.latitude, query.longitude);
-  }
-
   @Get('nearby')
   @ApiOperation({ summary: '주변 공개 메모 탐색' })
   @ApiOkResponse({ type: [MemoResponseDto] })
@@ -85,13 +77,17 @@ export class MemoController {
   @Get(':memoId')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '메모 상세 조회' })
+  @ApiOperation({
+    summary: '메모 상세 조회',
+    description:
+      '메모 ID 기준으로 본인 메모 또는 활성 공개 메모를 조회합니다. 다른 사용자의 개인 메모와 만료된 공개 메모는 조회되지 않습니다.',
+  })
   @ApiOkResponse({ type: MemoResponseDto })
   getMemo(
     @Req() req: AuthenticatedRequest,
     @Param('memoId', new ParseUUIDPipe()) memoId: string,
   ) {
-    return this.memosService.findOneByUser(req.user.userId, memoId);
+    return this.memosService.findOneVisibleToUser(req.user.userId, memoId);
   }
 
   @Post()

@@ -4,7 +4,7 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { MemoBookmark } from './entity/memo-bookmark.entity';
 import { Memo, Visibility } from './entity/memo.entity';
@@ -67,6 +67,25 @@ export class MemosService {
 
   async findOneByUser(userId: string, memoId: string) {
     const memo = await this.findOwnedMemoEntity(userId, memoId);
+    return this.toMemoResponse(memo);
+  }
+
+  async findOneVisibleToUser(userId: string, memoId: string) {
+    await this.validateUserOrThrow(userId);
+
+    const memo = await this.memosRepository.findOne({
+      where: { id: memoId },
+      relations: { user: true }
+    });
+
+    if (!memo) {
+      throw new NotFoundException('Memo not found.');
+    }
+
+    if (memo.user?.id !== userId && !this.isActivePublicMemo(memo)) {
+      throw new NotFoundException('Memo not found.');
+    }
+
     return this.toMemoResponse(memo);
   }
 
@@ -142,25 +161,6 @@ export class MemosService {
     return { id: memoId, deleted: true };
   }
 
-  async findByLocation(latitude: number, longitude: number) {
-    const lat = this.validateLatitude(latitude);
-    const lng = this.validateLongitude(longitude);
-    const now = new Date();
-
-    const memos = await this.memosRepository.find({
-      where: {
-        latitude: lat,
-        longitude: lng,
-        visibility: Visibility.PUBLIC,
-        expiresAt: MoreThan(now)
-      },
-      relations: { user: true },
-      order: { createdAt: 'DESC' }
-    });
-
-    return memos.map((memo) => this.toMemoResponse(memo));
-  }
-
   async findNearbyPublicMemos(params: FindNearbyPublicMemosParams) {
     const latitude = this.validateLatitude(params.latitude);
     const longitude = this.validateLongitude(params.longitude);
@@ -195,6 +195,51 @@ export class MemosService {
       .map(({ memo, distanceMeters }) =>
         this.toMemoResponse(memo, { latitude, longitude, radius }, distanceMeters)
       );
+  }
+
+  async findPrivateNotificationCandidates(
+    userId: string,
+    latitude: number,
+    longitude: number
+  ) {
+    const lat = this.validateLatitude(latitude);
+    const lng = this.validateLongitude(longitude);
+
+    await this.validateUserOrThrow(userId);
+
+    const memos = await this.memosRepository.find({
+      where: {
+        user: { id: userId },
+        visibility: Visibility.PRIVATE
+      },
+      relations: { user: true }
+    });
+
+    return this.filterNotificationCandidates(
+      memos.filter((memo) => memo.visibility === Visibility.PRIVATE),
+      lat,
+      lng
+    );
+  }
+
+  async findPublicNotificationCandidates(latitude: number, longitude: number) {
+    const lat = this.validateLatitude(latitude);
+    const lng = this.validateLongitude(longitude);
+    const now = new Date();
+
+    const memos = await this.memosRepository.find({
+      where: {
+        visibility: Visibility.PUBLIC,
+        expiresAt: MoreThan(now)
+      },
+      relations: { user: true }
+    });
+
+    return this.filterNotificationCandidates(
+      memos.filter((memo) => this.isActivePublicMemo(memo)),
+      lat,
+      lng
+    );
   }
 
   async republish(userId: string, memoId: string, durationDays: number) {
@@ -285,6 +330,14 @@ export class MemosService {
     return memo.visibility === Visibility.PUBLIC
       && memo.expiresAt !== null
       && memo.expiresAt <= new Date();
+  }
+
+  private isActivePublicMemo(memo: Memo): boolean {
+    return (
+      memo.visibility === Visibility.PUBLIC &&
+      memo.expiresAt !== null &&
+      !this.isExpired(memo)
+    );
   }
 
   private async validateUserOrThrow(userId: string) {
@@ -494,6 +547,28 @@ export class MemosService {
       Math.cos(startLat) * Math.cos(endLat) * Math.sin(lngDelta / 2) ** 2;
 
     return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  private filterNotificationCandidates(
+    memos: Memo[],
+    latitude: number,
+    longitude: number
+  ) {
+    return memos
+      .map((memo) => ({
+        memo,
+        distanceMeters: this.calculateDistanceMeters(
+          latitude,
+          longitude,
+          Number(memo.latitude),
+          Number(memo.longitude)
+        )
+      }))
+      .filter(({ memo, distanceMeters }) => distanceMeters <= memo.triggerRadius)
+      .sort((a, b) => a.distanceMeters - b.distanceMeters)
+      .map(({ memo, distanceMeters }) =>
+        this.toMemoResponse(memo, { latitude, longitude }, distanceMeters)
+      );
   }
 
   private toMemoResponse(

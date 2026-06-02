@@ -6,11 +6,15 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { MemosModule } from './memo/memos.module';
+import { NotificationsModule } from './notification/notifications.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: process.env.ENV_FILE || '.env'
+    }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
@@ -26,7 +30,8 @@ import { UsersModule } from './users/users.module';
     }),
     UsersModule,
     AuthModule,
-    MemosModule
+    MemosModule,
+    NotificationsModule
   ],
   controllers: [AppController],
   providers: [AppService]
